@@ -33,31 +33,28 @@ var schoolClass = Class{
 	Teacher: "teacher123",
 }
 
-// Функція для перевірки авторизації
-func isAuthorized(r *http.Request) bool {
-	authHeader := r.Header.Get("Authorization")
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	return token == schoolClass.Teacher
+// Middleware для перевірки авторизації
+func authorizationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != schoolClass.Teacher {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Обробник для отримання загальної інформації про клас
 func getClassInfo(w http.ResponseWriter, r *http.Request) {
-	if !isAuthorized(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(schoolClass)
 }
 
 // Обробник для отримання інформації про конкретного учня
 func getStudentInfo(w http.ResponseWriter, r *http.Request) {
-	if !isAuthorized(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	id := strings.TrimPrefix(r.URL.Path, "/student/")
-
 	for _, student := range schoolClass.Students {
 		if student.ID == id {
 			w.Header().Set("Content-Type", "application/json")
@@ -69,8 +66,9 @@ func getStudentInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/class", getClassInfo)
-	http.HandleFunc("/student/", getStudentInfo) // Зверніть увагу на слеш в кінці
+	// Створення окремих шляхів для кращої маршрутизації
+	http.Handle("/class", authorizationMiddleware(http.HandlerFunc(getClassInfo)))
+	http.Handle("/student/", authorizationMiddleware(http.HandlerFunc(getStudentInfo)))
 
 	fmt.Println("Сервер працює на динамічному порту")
 	listener, err := net.Listen("tcp", ":0")
